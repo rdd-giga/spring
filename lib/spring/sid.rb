@@ -37,6 +37,8 @@ module Spring
 
     def self.pgid
       Process.getpgid(sid)
+    ensure
+      Process.pid
     end
   end
 end
