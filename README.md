@@ -1,6 +1,7 @@
 # Spring
 
 [![Build Status](https://travis-ci.org/jonleighton/spring.png?branch=master)](https://travis-ci.org/jonleighton/spring)
+[![Gem Version](https://badge.fury.io/rb/spring.png)](http://badge.fury.io/rb/spring)
 
 Spring is a Rails application preloader. It speeds up development by
 keeping your application running in the background so you don't need to
@@ -18,21 +19,47 @@ boot it every time you run a test, rake task or migration.
 * Ruby versions: MRI 1.9.3, MRI 2.0.0
 * Rails versions: 3.2, 4.0
 
-Spring makes extensive use of `Process#fork`, so won't be able to
+Spring makes extensive use of `Process.fork`, so won't be able to
 provide a speed up on platforms which don't support forking (Windows, JRuby).
 
 ## Walkthrough
 
-Either `gem install spring` or add it to your Gemfile:
+### Setup
+
+Add spring to your Gemfile:
 
 ``` ruby
-group :development do
-  gem "spring"
+gem "spring", group: :development
+```
+
+It's recommended to 'springify' the executables in your `bin/`
+directory:
+
+```
+$ bundle install
+$ bundle exec spring binstub --all
+```
+
+This generates a `bin/spring` executable, and inserts a small snippet of
+code into relevant existing executables. The snippet looks like this:
+
+``` ruby
+begin
+  load File.expand_path("../spring", __FILE__)
+rescue LoadError
 end
 ```
 
-Spring is designed to be used *without* bundle exec, so use `spring
-[command]` rather than `bundle exec spring [command]`.
+On platforms where spring is installed and supported, this snippet
+hooks spring into the execution of commands. In other cases, the snippet
+will just be silently ignored and the lines after it will be executed as
+normal.
+
+If you don't want to prefix every command you type with `bin/`, you
+can [use direnv](https://github.com/zimbatm/direnv) to automatically add
+`./bin` to your `PATH` when you `cd` into your application.
+
+### Usage
 
 For this walkthrough I've generated a new Rails application, and run
 `rails generate scaffold posts name:string`.
@@ -40,7 +67,7 @@ For this walkthrough I've generated a new Rails application, and run
 Let's run a test:
 
 ```
-$ time spring rake test test/functional/posts_controller_test.rb
+$ time bin/rake test test/functional/posts_controller_test.rb
 Run options:
 
 # Running tests:
@@ -60,7 +87,7 @@ That wasn't particularly fast because it was the first run, so spring
 had to boot the application. It's now running:
 
 ```
-$ spring status
+$ bin/spring status
 Spring is running:
 
 26150 spring server | spring-demo-app | started 3 secs ago
@@ -70,7 +97,7 @@ Spring is running:
 The next run is faster:
 
 ```
-$ time spring rake test test/functional/posts_controller_test.rb
+$ time bin/rake test test/functional/posts_controller_test.rb
 Run options:
 
 # Running tests:
@@ -86,20 +113,6 @@ user    0m0.276s
 sys     0m0.059s
 ```
 
-Writing `spring` before every command gets a bit tedious. Spring binstubs solve this:
-
-```
-$ spring binstub rake rails
-```
-
-This will generate `bin/rake` and `bin/rails`. They
-replace any binstubs that you might already have in your `bin/`
-directory. Check them in to source control.
-
-If you don't want to prefix every command you type with `bin/`, you
-can [use direnv](https://github.com/zimbatm/direnv) to automatically add
-`./bin` to your `PATH` when you `cd` into your application.
-
 If we edit any of the application files, or test files, the changes will
 be picked up on the next run without the background process having to
 restart. This works in exactly the same way as the code reloading
@@ -114,7 +127,7 @@ Let's "edit" `config/application.rb`:
 
 ```
 $ touch config/application.rb
-$ spring status
+$ bin/spring status
 Spring is running:
 
 26150 spring server | spring-demo-app | started 36 secs ago
@@ -137,7 +150,7 @@ edit_post GET    /posts/:id/edit(.:format) posts#edit
           PUT    /posts/:id(.:format)      posts#update
           DELETE /posts/:id(.:format)      posts#destroy
 
-$ spring status
+$ bin/spring status
 Spring is running:
 
 26150 spring server | spring-demo-app | started 1 min ago
@@ -150,25 +163,18 @@ when you close your terminal. However if you do want to do a manual shut
 down, use the `stop` command:
 
 ```
-$ spring stop
+$ bin/spring stop
 Spring stopped.
 ```
 
+### Removal
+
+To remove spring:
+
+* 'Unspring' your bin/ executables: `bin/spring binstub --remove --all`
+* Remove spring from your Gemfile
+
 ## Commands
-
-The following commands are shipped by default.
-
-Custom commands can be specified in the Spring config file. See
-[`lib/spring/commands/`](https://github.com/jonleighton/spring/blob/master/lib/spring/commands/)
-for examples.
-
-You can add the following gems to your Gemfile for additional commands:
-
-* [spring-commands-rspec](https://github.com/jonleighton/spring-commands-rspec)
-* [spring-commands-cucumber](https://github.com/jonleighton/spring-commands-cucumber)
-* [spring-commands-testunit](https://github.com/jonleighton/spring-commands-testunit) - useful for
-  running `Test::Unit` tests on Rails 3, since only Rails 4 allows you
-  to use `rake test path/to/test` to run a particular test/directory.
 
 ### `rake`
 
@@ -193,6 +199,28 @@ These execute the rails command you already know and love. If you run
 a different sub command (e.g. `rails server`) then spring will automatically
 pass it through to the underlying `rails` executable (without the
 speed-up).
+
+### Additional commands
+
+You can add these to your Gemfile for additional commands (run `spring stop` afterwards
+to pick up the changes):
+
+* [spring-commands-rspec](https://github.com/jonleighton/spring-commands-rspec)
+* [spring-commands-cucumber](https://github.com/jonleighton/spring-commands-cucumber)
+* [spring-commands-testunit](https://github.com/jonleighton/spring-commands-testunit) - useful for
+  running `Test::Unit` tests on Rails 3, since only Rails 4 allows you
+  to use `rake test path/to/test` to run a particular test/directory.
+
+## Use without adding to bundle
+
+If you don't want spring-related code checked into your source
+repository, it's possible to use spring without adding to your Gemfile.
+However, using spring binstubs without adding spring to the Gemfile is not
+supported.
+
+To use spring like this, do a `gem install spring` and then prefix
+commands with `spring`. For example, rather than running `bin/rake -T`,
+you'd run `spring rake -T`.
 
 ## Configuration
 
@@ -223,9 +251,14 @@ which get run when your application initializers, such as
 `config/initializers/*.rb`.
 
 For example, if loading your test helper is slow, you might like to
-preload it to speed up your test runs. To do this you could put a
-`require Rails.root.join("test/helper")` in
-`config/environments/test.rb`.
+preload it to speed up your test runs. To do this you could add the
+following to your `config/environments/test.rb`:
+
+``` ruby
+config.after_initialize do
+  require Rails.root.join("test/helper")
+end
+```
 
 ### Running code after forking
 
